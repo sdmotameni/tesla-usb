@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Raspberry Pi](https://img.shields.io/badge/Platform-Raspberry%20Pi-C51A4A.svg)](https://www.raspberrypi.org/)
 
+Teslas cameras continously record footage on a 1-hour rolling buffer, deleting all footage outside this short window unless a Sentry event is detected. This project addresses this limitation by extending the buffer significantly contigent on the microsd card used (e.g. 1TB = 7 days of footage).
+
 This project transforms a Raspberry Pi Zero 2 W (or any Raspberry Pi) into an offline Tesla USB Dashcam video archiving system using a single SD card and LVM snapshots. It captures and preserves TeslaCam footage without interrupting Tesla's writing process, and manages disk space intelligently with SQLite tracking.
 
 ## Project Objectives
