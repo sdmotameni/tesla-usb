@@ -10,22 +10,62 @@ IFS=$'\n\t'
 
 ###############################################################################
 # CONFIGURATION
-# Define default values and environment variables for script operation
+# Load configuration from config file or use environment variables/defaults
 ###############################################################################
+# Define paths to check for config file
+CONFIG_PATHS=(
+  "/etc/tesla-usb/tesla-usb.conf"
+  "$HOME/.config/tesla-usb.conf"
+  "$(dirname "$0")/../config/tesla-usb.conf"
+)
+
+# Try to load config from one of the paths
+for CONFIG_PATH in "${CONFIG_PATHS[@]}"; do
+  if [[ -f "$CONFIG_PATH" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONFIG_PATH"
+    break
+  fi
+done
+
+# Set defaults if not defined in config
 : "${VG_NAME:=tesla_vg}"
 : "${LV_NAME:=tesla_usb}"
 : "${SNAP_NAME:=tesla_snap}"
 : "${SNAP_SIZE:=3G}"
 : "${SNAP_MOUNT:=/mnt/tesla_snap}"
 : "${ARCHIVE_DIR:=/home/pi/tesla-archive}"
-: "${DB:=$ARCHIVE_DIR/.file_index.sqlite}"
-: "${LOG:=$ARCHIVE_DIR/tesla_archive.log}"
+: "${DB_NAME:=.file_index.sqlite}"
+: "${LOG_NAME:=tesla_archive.log}"
 : "${MIN_DISK_SPACE_PCT:=10}"  # Minimum disk space threshold (percentage)
 : "${BATCH_SIZE:=50}"  # Number of files to batch process before DB insert
 : "${MAX_LOG_SIZE:=1073741824}"  # Maximum log file size (1GB)
+: "${MAX_DISK_TEMP:=100}"  # Maximum disk temperature in °C
+: "${DEBUG:=0}"  # Debug mode
+
+# Derived paths
+DB="$ARCHIVE_DIR/$DB_NAME"
+LOG="$ARCHIVE_DIR/$LOG_NAME"
 
 LOCK_FD=200
 LOCK_FILE=/var/lock/teslacam_archive.lock
+
+# Debug output
+if [[ "$DEBUG" == "1" ]]; then
+  echo "Configuration loaded:"
+  echo "VG_NAME=$VG_NAME"
+  echo "LV_NAME=$LV_NAME"
+  echo "SNAP_NAME=$SNAP_NAME"
+  echo "SNAP_SIZE=$SNAP_SIZE"
+  echo "SNAP_MOUNT=$SNAP_MOUNT"
+  echo "ARCHIVE_DIR=$ARCHIVE_DIR"
+  echo "DB=$DB"
+  echo "LOG=$LOG"
+  echo "MIN_DISK_SPACE_PCT=$MIN_DISK_SPACE_PCT"
+  echo "BATCH_SIZE=$BATCH_SIZE"
+  echo "MAX_LOG_SIZE=$MAX_LOG_SIZE"
+  echo "MAX_DISK_TEMP=$MAX_DISK_TEMP"
+fi
 
 ###############################################################################
 # INITIALIZATION
@@ -166,8 +206,8 @@ if command -v smartctl >/dev/null 2>&1; then
     log "🌡️ Current disk temperature: ${DISK_TEMP}°C"
     if [[ -z "$DISK_TEMP" || "$DISK_TEMP" = "0" ]]; then
       log "⚠️ Could not determine disk temperature, continuing anyway"
-    elif (( DISK_TEMP > 100 )); then
-      log "🔥 Disk temperature too high (${DISK_TEMP}°C > 100°C) - skipping this run for safety"
+    elif (( DISK_TEMP > MAX_DISK_TEMP )); then
+      log "🔥 Disk temperature too high (${DISK_TEMP}°C > ${MAX_DISK_TEMP}°C) - skipping this run for safety"
       exit 0
     fi
   else

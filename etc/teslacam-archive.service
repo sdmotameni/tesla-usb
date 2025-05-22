@@ -1,0 +1,16 @@
+[Unit]
+Description=TeslaCam Snapshot & Archive Script
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tesla-usb-archive.sh
+TimeoutSec=3600
+Nice=10
+IOSchedulingClass=2
+IOSchedulingPriority=7
+StandardOutput=append:/home/pi/tesla-archive/tesla_archive.log
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target 

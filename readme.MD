@@ -1,8 +1,9 @@
-# Tesla USB Dashcam Archiver on Raspberry Pi
+# Tesla USB Dashcam Archiver
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Platform: Raspberry Pi](https://img.shields.io/badge/Platform-Raspberry%20Pi-C51A4A.svg)](https://www.raspberrypi.org/)
 
 This project transforms a Raspberry Pi Zero 2 W (or any Raspberry Pi) into an offline Tesla USB Dashcam video archiving system using a single SD card and LVM snapshots. It captures and preserves TeslaCam footage without interrupting Tesla's writing process, and manages disk space intelligently with SQLite tracking.
-
----
 
 ## Project Objectives
 
@@ -14,8 +15,6 @@ This project transforms a Raspberry Pi Zero 2 W (or any Raspberry Pi) into an of
 - Automate execution via `systemd` timer
 - Implement robust recovery mechanisms for unexpected system shutdowns
 
----
-
 ## System Requirements
 
 | Item                  | Notes                                                          |
@@ -26,7 +25,53 @@ This project transforms a Raspberry Pi Zero 2 W (or any Raspberry Pi) into an of
 | USB OTG cable         | Optional (for direct Tesla USB connection)                     |
 | smartctl (optional)   | Required for disk temperature monitoring                       |
 
----
+## Quick Start
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/yourusername/tesla-usb.git
+cd tesla-usb
+```
+
+### 2. Partition Your SD Card
+
+Follow the partitioning instructions in the [Detailed Setup Guide](#detailed-setup-guide) section.
+
+### 3. Run the Installer
+
+```bash
+sudo ./scripts/install.sh
+```
+
+The installer will:
+
+- Install required dependencies
+- Set up configuration files
+- Configure systemd services
+- Guide you through customization options
+
+### 4. Configure USB Mass Storage Gadget (if using Pi Zero)
+
+Follow the USB emulation instructions in the [USB Emulation](#usb-emulation-mass-storage-gadget) section.
+
+## Project Structure
+
+```
+tesla-usb/
+├── config/               - Configuration files
+│   └── tesla-usb.conf    - Default configuration
+├── docs/                 - Documentation
+├── etc/                  - System files
+│   ├── teslacam-archive.service  - Systemd service
+│   └── teslacam-archive.timer    - Systemd timer
+├── scripts/              - Executable scripts
+│   ├── install.sh        - Installation script
+│   └── run.sh            - Main archiving script
+├── CONTRIBUTING.md       - Contribution guidelines
+├── LICENSE               - MIT License
+└── README.md             - This file
+```
 
 ## Architecture Overview
 
@@ -44,7 +89,34 @@ Update file index → SQLite DB (.file_index.sqlite)
 When disk space <10% → Delete oldest files
 ```
 
----
+## Detailed Setup Guide
+
+### 1. Flash Raspberry Pi OS
+
+Use Raspberry Pi Imager to flash Raspberry Pi OS Lite to the microSD card.
+
+### 2. Resize Partitions
+
+Using `gparted` or `parted`:
+
+- Shrink root partition to approximately 32 GB
+- Create 128 GB FAT32 partition for Tesla USB
+- Leave remaining space unallocated for LVM
+
+### 3. Set Up LVM on Raspberry Pi
+
+```bash
+sudo apt update
+sudo apt install lvm2
+sudo pvcreate /dev/mmcblk0p3
+sudo vgcreate tesla_vg /dev/mmcblk0p3
+sudo lvcreate -L 120G -n tesla_usb tesla_vg
+sudo mkfs.vfat /dev/tesla_vg/tesla_usb
+sudo mkdir /mnt/tesla_init
+sudo mount /dev/tesla_vg/tesla_usb /mnt/tesla_init
+sudo mkdir -p /mnt/tesla_init/TeslaCam
+sudo umount /mnt/tesla_init
+```
 
 ## USB Emulation (Mass Storage Gadget)
 
@@ -86,152 +158,23 @@ sudo reboot
 
 After reboot, the Tesla should recognize the Pi as a USB device and start writing footage to it. Your script will periodically take snapshots and safely archive the contents.
 
----
+## Configuration
 
-## Initial Configuration
+The default configuration is in `config/tesla-usb.conf`. You can customize it during installation or by editing the file at `/etc/tesla-usb/tesla-usb.conf` after installation.
 
-### 1. Flash Raspberry Pi OS
-
-Use Raspberry Pi Imager to flash Raspberry Pi OS Lite to the microSD card.
-
-### 2. Resize Partitions
-
-Using `gparted` or `parted`:
-
-- Shrink root partition to approximately 32 GB
-- Create 128 GB FAT32 partition for Tesla USB
-- Leave remaining space unallocated for LVM
-
-### 3. Set Up LVM on Raspberry Pi
+Key configuration options:
 
 ```bash
-sudo apt update
-sudo apt install lvm2
-sudo pvcreate /dev/mmcblk0p3
-sudo vgcreate tesla_vg /dev/mmcblk0p3
-sudo lvcreate -L 120G -n tesla_usb tesla_vg
-sudo mkfs.vfat /dev/tesla_vg/tesla_usb
-sudo mkdir /mnt/tesla_init
-sudo mount /dev/tesla_vg/tesla_usb /mnt/tesla_init
-sudo mkdir -p /mnt/tesla_init/TeslaCam
-sudo umount /mnt/tesla_init
+# LVM Configuration
+VG_NAME=tesla_vg         # Volume group name
+LV_NAME=tesla_usb        # Logical volume name
+SNAP_NAME=tesla_snap     # Snapshot name
+SNAP_SIZE=3G             # Snapshot size
+
+# Archive Configuration
+ARCHIVE_DIR=/home/pi/tesla-archive  # Where to store archived footage
+MIN_DISK_SPACE_PCT=10    # Min free space before cleanup
 ```
-
----
-
-## Script Deployment
-
-### 1. Install the Archiver Script
-
-```bash
-sudo nano /usr/local/bin/run.sh
-```
-
-Paste the script content and set execution permissions:
-
-```bash
-sudo chmod +x /usr/local/bin/run.sh
-```
-
-### 2. Configure systemd Service
-
-Create the service definition in `/etc/systemd/system/teslacam-archive.service`:
-
-```ini
-[Unit]
-Description=TeslaCam Snapshot & Archive Script
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/run.sh
-TimeoutSec=3600
-Nice=10
-IOSchedulingClass=2
-IOSchedulingPriority=7
-StandardOutput=append:/home/pi/tesla-archive/tesla_archive.log
-StandardError=inherit
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable the service:
-
-```bash
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable teslacam-archive.service
-```
-
-### 3. Optional Timer Configuration
-
-Create a timer definition in `/etc/systemd/system/teslacam-archive.timer`:
-
-```ini
-[Unit]
-Description=Run TeslaCam Archive Script Periodically
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=15min
-Unit=teslacam-archive.service
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable the timer:
-
-```bash
-sudo systemctl enable --now teslacam-archive.timer
-```
-
-**Note**: The `OnUnitActiveSec=15min` parameter can be modified to adjust execution frequency.
-
----
-
-## File Structure
-
-```
-/home/pi/tesla-archive/
-├── TeslaCam/                  ← Archived footage
-├── .file_index.sqlite         ← SQLite DB tracking processed files
-└── tesla_archive.log          ← Operation logs (auto-truncated at 1GB)
-```
-
----
-
-## Technical Features
-
-### System Safety Mechanisms
-
-- **Disk Temperature Monitoring**: Execution is skipped when disk temperature exceeds 100°C
-- **Recovery Safeguards**: Automatic detection and cleanup of stale snapshots
-- **Database Integrity**: SQLite integrity verification with automatic corruption repair
-- **Lock Management**: Process serialization via flock to prevent concurrent execution
-
-### Database Performance Optimization
-
-- Transaction batching for SQLite operations
-- Performance optimization when processing large file volumes
-- Configurable batch size (default: 50 files per transaction)
-
-### Log Management
-
-- Automatic log rotation when file exceeds 1GB
-- Retention of most recent 10,000 log entries
-- Prevention of unlimited log growth
-
-### Storage Management
-
-- Volume utilization monitoring after each archive operation
-- Automatic deletion of oldest videos when free space falls below 10% threshold
-- Age-based file deletion using SQLite `created_at` timestamp
-- Database maintenance to remove records older than 6 months
-- Cleanup of database backup files older than 30 days
-
----
 
 ## Testing and Diagnostics
 
@@ -254,124 +197,24 @@ sqlite3 /home/pi/tesla-archive/.file_index.sqlite \
 "SELECT path, created_at FROM files ORDER BY created_at ASC;"
 ```
 
----
-
-## Implementation Concepts
-
-- **LVM Snapshots**: Secure access to Tesla USB content while mounted by Tesla
-- **SQLite**: Efficient file tracking with transaction batching
-- **Filesystem I/O Optimization**: rsync with --inplace, readonly mounts, ionice
-- **Process Management**: systemd services and flock for reliable execution
-- **Storage Monitoring**: Automatic content pruning and health verification
-- **Log Rotation**: Prevention of log file growth beyond defined limits
-- **Fault Recovery**: Handling of power loss and unexpected system terminations
-
----
-
-## Extension Opportunities
-
-- Addition of USB SSD for expanded storage capacity
-- Implementation of web-based footage viewer
-- Video thumbnail generation
-- Event-based trigger mechanisms
-- Customizable retention policies by event type
-
----
-
 ## Security & Power Optimization
 
-### WiFi Auto-Disable
+See the detailed WiFi Auto-Disable instructions in the [original documentation section](#security--power-optimization).
 
-This configuration enhances security and reduces power consumption by automatically disabling WiFi after boot.
+## Technical Features
 
-#### Summary
+- **Disk Temperature Monitoring**: Execution is skipped when disk temperature exceeds 100°C
+- **Recovery Safeguards**: Automatic detection and cleanup of stale snapshots
+- **Database Integrity**: SQLite integrity verification with automatic corruption repair
+- **Lock Management**: Process serialization via flock to prevent concurrent execution
+- **Transaction batching**: Performance optimization for SQLite operations
+- **Automatic log rotation**: When file exceeds 1GB
+- **Storage Management**: Automatic deletion of oldest videos when free space falls below threshold
 
-- At boot: Wi-Fi is enabled so you can access the Pi if needed.
-- After 15 minutes: A script runs (via systemd timer) and disables Wi-Fi.
-- To re-enable access: Physically power cycle the Pi and SSH in before the script runs.
+## Contributing
 
-#### Implementation
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-1. **Create the Wi-Fi Disabling Script**
+## License
 
-```bash
-#!/bin/bash
-# /usr/local/bin/disable_wifi.sh
-
-echo "[INFO] Disabling Wi-Fi..." | systemd-cat -t disable_wifi
-nmcli radio wifi off 2>/dev/null || rfkill block wifi
-```
-
-Make it executable:
-
-```bash
-sudo chmod +x /usr/local/bin/disable_wifi.sh
-```
-
-2. **Set up a systemd Timer**
-
-Create the service:
-
-```ini
-# /etc/systemd/system/disable-wifi.service
-[Unit]
-Description=Disable Wi-Fi after boot delay
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/disable_wifi.sh
-```
-
-Create the timer:
-
-```ini
-# /etc/systemd/system/disable-wifi.timer
-[Unit]
-Description=Run disable-wifi.service 15 minutes after boot
-
-[Timer]
-OnBootSec=15min
-AccuracySec=1s
-Unit=disable-wifi.service
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable the timer:
-
-```bash
-sudo systemctl daemon-reexec
-sudo systemctl enable --now disable-wifi.timer
-```
-
-#### Recovery Access
-
-When you need to access the Pi:
-
-1. Power-cycle the Pi
-2. SSH in during the 15-minute window
-3. Disable the auto-shutdown timer:
-
-```bash
-sudo systemctl stop disable-wifi.timer
-sudo systemctl disable disable-wifi.timer
-```
-
-This configuration maintains g_mass_storage functionality while minimizing power usage and attack surface.
-
----
-
-## Technical Notes
-
-- Designed for reliability with zero interruption to Tesla operations
-- Performance optimizations for resource-constrained hardware
-- Fully automated maintenance requiring no manual intervention
-- Maximized footage retention within storage constraints
-- Comprehensive recovery mechanisms for system interruption scenarios
-
----
-
-# tesla-usb
-
-# tesla-usb
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

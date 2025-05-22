@@ -1,0 +1,10 @@
+[Unit]
+Description=Run TeslaCam Archive Script Periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=teslacam-archive.service
+
+[Install]
+WantedBy=timers.target 

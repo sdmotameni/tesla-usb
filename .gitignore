@@ -1,0 +1,34 @@
+# OS files
+.DS_Store
+.Spotlight-V100
+.Trashes
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Log files
+*.log
+
+# SQLite database files
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.corrupted.*
+*.dump
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
+*.sublime-*
+
+# Temporary files
+*.tmp
+/tmp/ 
