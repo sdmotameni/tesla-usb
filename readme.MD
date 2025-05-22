@@ -46,6 +46,48 @@ When disk space <10% → Delete oldest files
 
 ---
 
+## USB Emulation (Mass Storage Gadget)
+
+To allow the Raspberry Pi Zero 2 W to emulate a USB drive for Tesla, configure the Pi in USB OTG mode using the g_mass_storage kernel module.
+
+### 1. Edit /boot/firmware/config.txt
+
+Append the following lines:
+
+```ini
+dtoverlay=dwc2
+```
+
+### 2. Edit /boot/firmware/cmdline.txt
+
+Find the single long line (don't add line breaks). Add `modules-load=dwc2,g_mass_storage` after `rootwait`, like this:
+
+```txt
+... rootwait modules-load=dwc2,g_mass_storage ...
+```
+
+❗ Make sure you keep it as a single line. Don't add newlines to this file.
+
+### 3. Configure Mass Storage Device
+
+Create the file `/etc/modprobe.d/g_mass_storage.conf` and add the following content to point to your Tesla USB volume (the FAT32 logical volume we created):
+
+```bash
+options g_mass_storage file=/dev/tesla_vg/tesla_usb stall=0 removable=1 ro=0
+```
+
+This tells the Pi to present the LVM volume `/dev/tesla_vg/tesla_usb` as a USB drive to the Tesla.
+
+### 4. Reboot
+
+```bash
+sudo reboot
+```
+
+After reboot, the Tesla should recognize the Pi as a USB device and start writing footage to it. Your script will periodically take snapshots and safely archive the contents.
+
+---
+
 ## Initial Configuration
 
 ### 1. Flash Raspberry Pi OS
@@ -245,5 +287,7 @@ sqlite3 /home/pi/tesla-archive/.file_index.sqlite \
 - Comprehensive recovery mechanisms for system interruption scenarios
 
 ---
+
 # tesla-usb
+
 # tesla-usb
