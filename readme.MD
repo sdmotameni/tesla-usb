@@ -36,7 +36,10 @@ cd tesla-usb
 
 ### 2. Partition Your SD Card
 
-Follow the partitioning instructions in the [Detailed Setup Guide](#detailed-setup-guide) section.
+Either:
+
+- **Automated approach**: Run the partitioning script: `sudo ./scripts/setup_partitions.sh`
+- **Manual approach**: Follow the instructions in the [Detailed Setup Guide](#detailed-setup-guide) section
 
 ### 3. Run the Installer
 
@@ -90,6 +93,8 @@ When disk space <10% → Delete oldest files
 ```
 
 ## Detailed Setup Guide
+
+This section provides manual instructions for those who want to understand the underlying process or need to customize the setup beyond what the automated scripts provide.
 
 ### 1. Flash Raspberry Pi OS
 
