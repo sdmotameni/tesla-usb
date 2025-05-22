@@ -169,7 +169,14 @@ else
   LVM_PART="/dev/${DEVICE}3"
 fi
 
+# Make sure the partition is unmounted before creating physical volume
+if mount | grep -q "$LVM_PART"; then
+  log_info "Unmounting $LVM_PART before creating physical volume"
+  umount -f "$LVM_PART" || true
+fi
+
 # Create physical volume
+log_info "Creating LVM physical volume on $LVM_PART"
 pvcreate "$LVM_PART"
 
 # Create volume group

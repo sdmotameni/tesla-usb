@@ -108,11 +108,20 @@ Using `gparted` or `parted`:
 ```bash
 sudo apt update
 sudo apt install lvm2
+
+# Make sure the partition is unmounted before creating physical volume
+sudo umount /dev/mmcblk0p3 2>/dev/null || true
+
+# Create LVM physical volume and volume group
 sudo pvcreate /dev/mmcblk0p3
 sudo vgcreate tesla_vg /dev/mmcblk0p3
+
+# Create logical volume and format it
 sudo lvcreate -L 120G -n tesla_usb tesla_vg
 sudo mkfs.vfat /dev/tesla_vg/tesla_usb
-sudo mkdir /mnt/tesla_init
+
+# Initialize the TeslaCam directory
+sudo mkdir -p /mnt/tesla_init
 sudo mount /dev/tesla_vg/tesla_usb /mnt/tesla_init
 sudo mkdir -p /mnt/tesla_init/TeslaCam
 sudo umount /mnt/tesla_init
