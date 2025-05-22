@@ -95,13 +95,19 @@ When disk space <10% → Delete oldest files
 
 Use Raspberry Pi Imager to flash Raspberry Pi OS Lite to the microSD card.
 
-### 2. Resize Partitions
+### 2. Create Partition Layout
 
-Using `gparted` or `parted`:
+Using `gparted` or `parted` on your Linux machine:
 
-- Shrink root partition to approximately 32 GB
-- Create 128 GB FAT32 partition for Tesla USB
-- Leave remaining space unallocated for LVM
+- Create a 128 GB FAT32 partition for Tesla USB functionality
+- Create an additional partition with the remaining space for LVM storage
+
+> **Important:** When creating logical volumes, always make them about 5% smaller than their parent physical partition. For example, if you want a 120GB logical volume, the partition should be at least 128GB. This is necessary because:
+>
+> 1. LVM requires space for metadata storage
+> 2. Snapshots (which this project uses extensively) need extra space to track changes
+> 3. Having some free extents in the volume group provides flexibility for future growth
+> 4. It prevents performance degradation that can occur when a volume group is 100% allocated
 
 ### 3. Set Up LVM on Raspberry Pi
 
@@ -116,7 +122,7 @@ sudo umount /dev/mmcblk0p3 2>/dev/null || true
 sudo pvcreate /dev/mmcblk0p3
 sudo vgcreate tesla_vg /dev/mmcblk0p3
 
-# Create logical volume and format it
+# Create logical volume (note: 120G is ~5% smaller than the 128GB partition)
 sudo lvcreate -L 120G -n tesla_usb tesla_vg
 sudo mkfs.vfat /dev/tesla_vg/tesla_usb
 

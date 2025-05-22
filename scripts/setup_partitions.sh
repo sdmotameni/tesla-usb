@@ -182,8 +182,14 @@ pvcreate "$LVM_PART"
 # Create volume group
 vgcreate tesla_vg "$LVM_PART"
 
+# Calculate logical volume size (about 5% smaller than partition size for LVM overhead)
+# This provides space for LVM metadata, snapshots, and prevents performance issues
+LV_SIZE=$(echo "scale=0; ${TESLA_SIZE} * 0.95 / 1" | bc)
+log_info "Creating logical volume with size ${LV_SIZE}G (5% smaller than partition for LVM overhead)"
+log_info "This space is needed for LVM metadata, snapshots, and to prevent performance degradation"
+
 # Create logical volumes
-lvcreate -L "${TESLA_SIZE}G" -n tesla_usb tesla_vg
+lvcreate -L "${LV_SIZE}G" -n tesla_usb tesla_vg
 
 # Format Tesla USB logical volume
 log_info "Formatting Tesla USB logical volume (FAT32)..."
