@@ -30,7 +30,7 @@ This project transforms a Raspberry Pi Zero 2 W (or any Raspberry Pi) into an of
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/tesla-usb.git
+git clone https://github.com/sdmotameni/tesla-usb.git
 cd tesla-usb
 ```
 
