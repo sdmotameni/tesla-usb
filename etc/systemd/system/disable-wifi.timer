@@ -1,0 +1,10 @@
+[Unit]
+Description=Disable Wi-Fi <DELAY> min after boot
+
+[Timer]
+OnBootSec=<DELAY>min
+AccuracySec=1s
+Unit=disable-wifi.service
+
+[Install]
+WantedBy=timers.target
