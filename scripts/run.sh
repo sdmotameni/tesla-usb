@@ -12,6 +12,9 @@ IFS=$'\n\t'
 # CONFIGURATION
 # Load configuration from config file or use environment variables/defaults
 ###############################################################################
+# Ensure HOME is set (needed for systemd services)
+: "${HOME:=/root}"
+
 # Define paths to check for config file
 CONFIG_PATHS=(
   "/etc/tesla-usb/tesla-usb.conf"
