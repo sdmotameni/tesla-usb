@@ -145,7 +145,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/run.sh
-TimeoutSec=1800
+TimeoutSec=3600
 Nice=10
 IOSchedulingClass=2
 IOSchedulingPriority=7
