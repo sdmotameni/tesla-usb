@@ -66,8 +66,13 @@ tesla-usb/
 │   └── tesla-usb.conf    - Default configuration
 ├── docs/                 - Documentation
 ├── etc/                  - System files
-│   ├── teslacam-archive.service  - Systemd service
-│   └── teslacam-archive.timer    - Systemd timer
+│   └── systemd/          - Systemd configuration
+│       └── system/       - Systemd unit files
+│           ├── disable-wifi.service    - WiFi disabling service
+│           ├── disable-wifi.timer      - WiFi disabling timer
+│           ├── teslacam-archive.service - TeslaCam archive service
+│           ├── teslacam-archive.timer   - TeslaCam archive timer
+│           └── wifi-unblock.service    - WiFi unblocking service
 ├── scripts/              - Executable scripts
 │   ├── install.sh        - Installation script
 │   └── run.sh            - Main archiving script
