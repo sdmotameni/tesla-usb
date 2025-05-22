@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Tesla USB Dashcam Archiver - WiFi Auto-Disable Setup
-# Sets up automatic WiFi disabling for security and power saving
+# Safely disables WiFi after a delay, with a recovery mechanism
 #
 
 set -euo pipefail
@@ -61,9 +61,15 @@ DELAY_MIN=${DELAY_MIN:-15}
 
 # Create the WiFi disabling script
 log_info "Creating WiFi disabling script..."
-cat > /usr/local/bin/disable_wifi.sh << EOF
+cat > /usr/local/bin/disable_wifi.sh << 'EOF'
 #!/bin/bash
 # Disable WiFi to save power and enhance security
+
+# If keep_wifi.txt exists on /boot, skip disabling WiFi
+if [ -f /boot/keep_wifi.txt ]; then
+  echo "[INFO] WiFi disable skipped due to /boot/keep_wifi.txt" | systemd-cat -t disable_wifi
+  exit 0
+fi
 
 echo "[INFO] Disabling WiFi..." | systemd-cat -t disable_wifi
 nmcli radio wifi off 2>/dev/null || rfkill block wifi
@@ -99,12 +105,24 @@ EOF
 
 # Enable the timer
 log_info "Enabling systemd timer..."
-systemctl daemon-reload
-systemctl enable disable-wifi.timer
+systemctl daemon-reexec
+systemctl enable --now disable-wifi.timer
 
+# Offer to create the WiFi override file
+echo ""
+read -p "Do you want to create /boot/keep_wifi.txt now to prevent WiFi from being disabled? (Y/n): " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+  touch /boot/keep_wifi.txt
+  log_info "/boot/keep_wifi.txt created. WiFi will NOT be disabled unless this file is deleted."
+else
+  log_info "You can manually create /boot/keep_wifi.txt later if needed."
+fi
+
+echo ""
 log_info "WiFi auto-disable has been set up successfully!"
 echo ""
-log_info "WiFi will automatically disable ${DELAY_MIN} minutes after boot."
+log_info "WiFi will automatically disable ${DELAY_MIN} minutes after boot unless /boot/keep_wifi.txt exists."
 log_info "To temporarily keep WiFi enabled:"
 echo "1. Power cycle the Pi"
 echo "2. SSH in during the ${DELAY_MIN} minute window"
@@ -113,4 +131,4 @@ echo ""
 log_info "To permanently disable this feature:"
 echo "sudo systemctl disable disable-wifi.timer"
 echo "sudo systemctl stop disable-wifi.timer"
-echo "==========================================================" 
+echo "=========================================================="
