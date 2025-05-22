@@ -278,6 +278,90 @@ sqlite3 /home/pi/tesla-archive/.file_index.sqlite \
 
 ---
 
+## Security & Power Optimization
+
+### WiFi Auto-Disable
+
+This configuration enhances security and reduces power consumption by automatically disabling WiFi after boot.
+
+#### Summary
+
+- At boot: Wi-Fi is enabled so you can access the Pi if needed.
+- After 15 minutes: A script runs (via systemd timer) and disables Wi-Fi.
+- To re-enable access: Physically power cycle the Pi and SSH in before the script runs.
+
+#### Implementation
+
+1. **Create the Wi-Fi Disabling Script**
+
+```bash
+#!/bin/bash
+# /usr/local/bin/disable_wifi.sh
+
+echo "[INFO] Disabling Wi-Fi..." | systemd-cat -t disable_wifi
+nmcli radio wifi off 2>/dev/null || rfkill block wifi
+```
+
+Make it executable:
+
+```bash
+sudo chmod +x /usr/local/bin/disable_wifi.sh
+```
+
+2. **Set up a systemd Timer**
+
+Create the service:
+
+```ini
+# /etc/systemd/system/disable-wifi.service
+[Unit]
+Description=Disable Wi-Fi after boot delay
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/disable_wifi.sh
+```
+
+Create the timer:
+
+```ini
+# /etc/systemd/system/disable-wifi.timer
+[Unit]
+Description=Run disable-wifi.service 15 minutes after boot
+
+[Timer]
+OnBootSec=15min
+AccuracySec=1s
+Unit=disable-wifi.service
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable the timer:
+
+```bash
+sudo systemctl daemon-reexec
+sudo systemctl enable --now disable-wifi.timer
+```
+
+#### Recovery Access
+
+When you need to access the Pi:
+
+1. Power-cycle the Pi
+2. SSH in during the 15-minute window
+3. Disable the auto-shutdown timer:
+
+```bash
+sudo systemctl stop disable-wifi.timer
+sudo systemctl disable disable-wifi.timer
+```
+
+This configuration maintains g_mass_storage functionality while minimizing power usage and attack surface.
+
+---
+
 ## Technical Notes
 
 - Designed for reliability with zero interruption to Tesla operations
