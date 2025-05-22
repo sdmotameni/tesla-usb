@@ -82,8 +82,8 @@ cp "$(dirname "$0")/../config/tesla-usb.conf" "$CONFIG_DIR/tesla-usb.conf"
 
 # Install systemd service and timer
 log_info "Installing systemd service and timer..."
-cp "$(dirname "$0")/../etc/teslacam-archive.service" "$SERVICE_DIR/"
-cp "$(dirname "$0")/../etc/teslacam-archive.timer" "$SERVICE_DIR/"
+cp "$(dirname "$0")/../etc/systemd/system/teslacam-archive.service" "$SERVICE_DIR/"
+cp "$(dirname "$0")/../etc/systemd/system/teslacam-archive.timer" "$SERVICE_DIR/"
 
 # Customize configuration based on user input
 echo ""
