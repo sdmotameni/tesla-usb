@@ -1,98 +1,83 @@
 #!/usr/bin/env bash
 #
-# Tesla USB Dashcam Archiver - WiFi Auto-Disable Setup
-# Safely disables WiFi after a delay, with a recovery mechanism
+# Tesla USB Dashcam Archiver – Wi-Fi Auto-Disable Setup
+# 1. Wi-Fi always starts ENABLED at boot
+# 2. X minutes later it is soft-blocked (unless /boot/keep_wifi.txt exists)
+# 3. Power-cycle → grace window opens again
 #
+# Changelog 2025-05-22
+#   • enable timer *without* --now  → no chance of killing SSH mid-install
+#   • numeric validation of delay
+#   • graceful fallback if NetworkManager isn’t installed
+#   • optional auto-creation of /boot/keep_wifi.txt (after remount RW)
+#   • use daemon-reload instead of daemon-reexec
+# ---------------------------------------------------------------------------
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+# ── coloured log helpers ───────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YEL='\033[0;33m'; NC='\033[0m'
+log_info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
+log_warn()  { echo -e "${YEL}[WARN]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-# Log helper functions
-log_info() {
-  echo -e "${GREEN}[INFO]${NC} $1"
-}
+[[ $EUID -eq 0 ]] || { log_error "Run as root (sudo)"; exit 1; }
 
-log_warn() {
-  echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-  echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if script is run as root
-if [[ $EUID -ne 0 ]]; then
-  log_error "This script must be run as root (sudo)"
-  exit 1
-fi
-
-# Show welcome message
+# ── banner ─────────────────────────────────────────────────────────────────
 clear
-echo "=========================================================="
-echo "   Tesla USB Dashcam Archiver - WiFi Auto-Disable Setup"
-echo "=========================================================="
-echo ""
-log_info "This script will set up automatic WiFi disabling after boot."
-log_info "This enhances security and reduces power consumption."
-echo ""
-log_info "How it works:"
-echo "1. At boot: WiFi is enabled so you can access the Pi if needed."
-echo "2. After a delay: A script runs and disables WiFi."
-echo "3. To re-enable access: Power cycle the Pi and SSH in during the window."
-echo ""
+cat <<'BANNER'
+==========================================================
+ Tesla USB Dashcam Archiver – Wi-Fi Auto-Disable Setup
+----------------------------------------------------------
+ • At boot : Wi-Fi is ON so you can SSH in.
+ • Later   : Wi-Fi turns OFF to save power/RF.
+ • Recover : Power-cycle, then stop the timer inside window.
+==========================================================
+BANNER
 
-read -p "Continue with installation? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  log_info "Installation cancelled."
-  exit 0
-fi
+read -rp "Continue with installation? (y/N) " -n1 REPLY; echo
+[[ $REPLY =~ ^[Yy]$ ]] || { log_info "Cancelled."; exit 0; }
 
-# Ask for delay time
-echo ""
-read -p "Delay before disabling WiFi (minutes) [15]: " DELAY_MIN
+# ── get delay ──────────────────────────────────────────────────────────────
+read -rp "Delay before disabling Wi-Fi (minutes) [15]: " DELAY_MIN; echo
 DELAY_MIN=${DELAY_MIN:-15}
+[[ $DELAY_MIN =~ ^[0-9]+$ ]] || { log_error "Delay must be a positive integer"; exit 1; }
 
-# Create the WiFi disabling script
-log_info "Creating WiFi disabling script..."
-cat > /usr/local/bin/disable_wifi.sh << 'EOF'
-#!/bin/bash
-# Disable WiFi to save power and enhance security
-
-# If keep_wifi.txt exists on /boot, skip disabling WiFi
+# ── install helper script ──────────────────────────────────────────────────
+log_info "Creating /usr/local/bin/disable_wifi.sh"
+cat > /usr/local/bin/disable_wifi.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
 if [ -f /boot/keep_wifi.txt ]; then
-  echo "[INFO] WiFi disable skipped due to /boot/keep_wifi.txt" | systemd-cat -t disable_wifi
+  echo "[disable_wifi] Guard file found – skipping" | systemd-cat -t disable_wifi
   exit 0
 fi
-
-echo "[INFO] Disabling WiFi..." | systemd-cat -t disable_wifi
-nmcli radio wifi off 2>/dev/null || rfkill block wifi
+echo "[disable_wifi] Blocking Wi-Fi" | systemd-cat -t disable_wifi
+if command -v nmcli >/dev/null; then
+  nmcli radio wifi off || true
+fi
+rfkill block wifi || true
 EOF
-
 chmod +x /usr/local/bin/disable_wifi.sh
 
-# Create systemd service
-log_info "Creating systemd service..."
-cat > /etc/systemd/system/disable-wifi.service << EOF
+# ── systemd units ──────────────────────────────────────────────────────────
+log_info "Creating disable-wifi.service"
+cat > /etc/systemd/system/disable-wifi.service <<'EOF'
 [Unit]
-Description=Disable WiFi after boot delay
+Description=Disable Wi-Fi after boot delay
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/disable_wifi.sh
 EOF
 
-# Create systemd timer
-log_info "Creating systemd timer with ${DELAY_MIN} minute delay..."
-cat > /etc/systemd/system/disable-wifi.timer << EOF
+log_info "Creating disable-wifi.timer (${DELAY_MIN} min)"
+cat > /etc/systemd/system/disable-wifi.timer <<EOF
 [Unit]
-Description=Run disable-wifi.service ${DELAY_MIN} minutes after boot
+Description=Disable Wi-Fi ${DELAY_MIN} minutes after boot
 
 [Timer]
 OnBootSec=${DELAY_MIN}min
@@ -103,32 +88,44 @@ Unit=disable-wifi.service
 WantedBy=timers.target
 EOF
 
-# Enable the timer
-log_info "Enabling systemd timer..."
-systemctl daemon-reexec
-systemctl enable --now disable-wifi.timer
-
-# Offer to create the WiFi override file
-echo ""
-read -p "Do you want to create /boot/keep_wifi.txt now to prevent WiFi from being disabled? (Y/n): " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-  touch /boot/keep_wifi.txt
-  log_info "/boot/keep_wifi.txt created. WiFi will NOT be disabled unless this file is deleted."
+# ── ask about guard file BEFORE enabling the timer ─────────────────────────
+read -rp "Create /boot/keep_wifi.txt now to KEEP Wi-Fi on? (Y/n): " -n1 GUARD; echo
+if [[ ! $GUARD =~ ^[Nn]$ ]]; then
+  log_info "Creating guard file /boot/keep_wifi.txt"
+  mountpoint -q /boot || true
+  if ! touch /boot/keep_wifi.txt 2>/dev/null; then
+    log_warn "/boot is read-only; remounting rw temporarily"
+    mount -o remount,rw /boot
+    touch /boot/keep_wifi.txt
+    mount -o remount,ro /boot
+  fi
 else
-  log_info "You can manually create /boot/keep_wifi.txt later if needed."
+  log_info "You can create /boot/keep_wifi.txt later if needed."
 fi
 
-echo ""
-log_info "WiFi auto-disable has been set up successfully!"
-echo ""
-log_info "WiFi will automatically disable ${DELAY_MIN} minutes after boot unless /boot/keep_wifi.txt exists."
-log_info "To temporarily keep WiFi enabled:"
-echo "1. Power cycle the Pi"
-echo "2. SSH in during the ${DELAY_MIN} minute window"
-echo "3. Run: sudo systemctl stop disable-wifi.timer"
-echo ""
-log_info "To permanently disable this feature:"
-echo "sudo systemctl disable disable-wifi.timer"
-echo "sudo systemctl stop disable-wifi.timer"
-echo "=========================================================="
+# ── enable (but DO NOT start) the timer ────────────────────────────────────
+log_info "Enabling timer (will start on next boot)…"
+systemctl daemon-reload
+systemctl enable disable-wifi.timer   # no --now ⇒ safe during install
+
+# ── summary ────────────────────────────────────────────────────────────────
+cat <<EOF
+
+==========================================================
+ Setup finished.
+ • Wi-Fi will disable ${DELAY_MIN} min after each boot
+   unless /boot/keep_wifi.txt exists.
+ • Grace window always opens on a power-cycle.
+
+ Common commands
+ ──────────────────────────────────────────────────────────
+  ▸ Cancel feature permanently
+      sudo systemctl disable --now disable-wifi.timer
+
+  ▸ Keep Wi-Fi up THIS session
+      sudo rfkill unblock wifi   (or nmcli radio wifi on)
+
+  ▸ Keep Wi-Fi up EVERY boot
+      sudo touch /boot/keep_wifi.txt
+==========================================================
+EOF
