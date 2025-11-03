@@ -40,7 +40,7 @@ Transform a Raspberry Pi Zero 2 W into an offline Tesla dashcam archiving system
 On another Linux computer (or Pi 5):
 
 ```bash
-git clone https://github.com/yourusername/tesla-usb.git
+git clone https://github.com/sdmotameni/tesla-usb.git
 cd tesla-usb
 sudo ./scripts/prep_sdcard.sh
 ```
@@ -58,7 +58,7 @@ ssh pi@tesla-pi.local
 **Install the archiver:**
 
 ```bash
-git clone https://github.com/yourusername/tesla-usb.git
+git clone https://github.com/sdmotameni/tesla-usb.git
 cd tesla-usb
 sudo ./scripts/setup_partitions.sh  # Creates LVM volumes
 sudo ./scripts/setup.sh              # Installs archiver
