@@ -42,7 +42,7 @@ Transform a Raspberry Pi Zero 2 W into a smart Tesla dashcam storage system that
 
 2. **Partition the SD card** (on another Linux computer):
    ```bash
-   git clone https://github.com/yourusername/tesla-usb.git
+   git clone https://github.com/sdmotameni/tesla-usb.git
    cd tesla-usb
    sudo ./scripts/prep_sdcard.sh
    ```
@@ -62,7 +62,7 @@ Transform a Raspberry Pi Zero 2 W into a smart Tesla dashcam storage system that
 3. **Run setup**:
 
    ```bash
-   git clone https://github.com/yourusername/tesla-usb.git
+   git clone https://github.com/sdmotameni/tesla-usb.git
    cd tesla-usb
    sudo ./scripts/setup_partitions.sh
    ```
