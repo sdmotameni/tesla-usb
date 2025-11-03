@@ -1,0 +1,15 @@
+[Unit]
+Description=Ensure WiFi is enabled on boot
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'logger -t tesla-usb "Unblocking WiFi on boot"; rfkill unblock wifi 2>/dev/null || true; rfkill unblock wlan 2>/dev/null || true; command -v nmcli >/dev/null && nmcli radio wifi on 2>/dev/null || true'
+ExecStartPost=/bin/sh -c 'for LED in ACT led0 led1 PWR; do [ -d /sys/class/leds/$LED ] && echo default-on > /sys/class/leds/$LED/trigger && break; done || true'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target
+

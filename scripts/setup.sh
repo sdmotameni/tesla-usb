@@ -87,8 +87,13 @@ else
 EOF
 fi
 
-# Install systemd service
-info "Installing systemd service..."
+# Install systemd services
+info "Installing systemd services..."
+
+# WiFi unblock on boot service
+cp "$(dirname "$0")/../etc/systemd/system/wifi-unblock.service" /etc/systemd/system/
+
+# Archive service
 cat > /etc/systemd/system/teslacam-archive.service <<'EOF'
 [Unit]
 Description=TeslaCam Snapshot & Archive
@@ -124,9 +129,10 @@ if [[ -n "$SUDO_USER" ]]; then
     chown -R "$SUDO_USER:$SUDO_USER" /mnt/tesla_archive 2>/dev/null || true
 fi
 
-# Enable service
-info "Enabling systemd timer..."
+# Enable services
+info "Enabling systemd services..."
 systemctl daemon-reload
+systemctl enable wifi-unblock.service
 systemctl enable --now teslacam-archive.timer
 
 echo

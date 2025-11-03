@@ -32,23 +32,26 @@ die() { log "ERROR: $*"; exit 1; }
 
 # LED control for wifi status indication
 set_led_wifi_on() {
-    # Set power LED to normal (solid on = wifi enabled)
-    if [[ -d /sys/class/leds/PWR ]]; then
-        echo default-on > /sys/class/leds/PWR/trigger 2>/dev/null || true
-    elif [[ -d /sys/class/leds/led1 ]]; then
-        echo default-on > /sys/class/leds/led1/trigger 2>/dev/null || true
-    fi
+    # Set LED to solid on (wifi enabled)
+    # Try all common LED names
+    for LED in ACT led0 led1 PWR; do
+        if [[ -d /sys/class/leds/$LED ]]; then
+            echo default-on > /sys/class/leds/$LED/trigger 2>/dev/null || true
+            break
+        fi
+    done
 }
 
 set_led_wifi_off() {
-    # Turn off power LED completely (wifi disabled)
-    if [[ -d /sys/class/leds/PWR ]]; then
-        echo none > /sys/class/leds/PWR/trigger 2>/dev/null || true
-        echo 0 > /sys/class/leds/PWR/brightness 2>/dev/null || true
-    elif [[ -d /sys/class/leds/led1 ]]; then
-        echo none > /sys/class/leds/led1/trigger 2>/dev/null || true
-        echo 0 > /sys/class/leds/led1/brightness 2>/dev/null || true
-    fi
+    # Turn off LED completely (wifi disabled)
+    # Try all common LED names
+    for LED in ACT led0 led1 PWR; do
+        if [[ -d /sys/class/leds/$LED ]]; then
+            echo none > /sys/class/leds/$LED/trigger 2>/dev/null || true
+            echo 0 > /sys/class/leds/$LED/brightness 2>/dev/null || true
+            break
+        fi
+    done
 }
 
 # Wifi control
@@ -62,16 +65,19 @@ disable_wifi() {
 }
 
 check_wifi_timer() {
+    # Note: This only runs when archiver runs (every 15 min)
+    # So wifi disables at ~17 min (2 min first run + 15 min interval)
+    
     # Get system uptime in seconds
     UPTIME=$(awk '{print int($1)}' /proc/uptime)
     
-    # If system has been up for less than 15 minutes, ensure wifi is on
+    # If system has been up for less than threshold, ensure wifi is on
     if [[ $UPTIME -lt $WIFI_DISABLE_AFTER ]]; then
         set_led_wifi_on
         return 0
     fi
     
-    # System has been up for 15+ minutes, disable wifi if not already disabled
+    # System has been up for threshold+ time, disable wifi if not already disabled
     if rfkill list wifi | grep -q "Soft blocked: no" 2>/dev/null; then
         disable_wifi
     else
