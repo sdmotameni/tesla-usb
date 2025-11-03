@@ -29,16 +29,16 @@ cmd_status() {
     UPTIME_MIN=$((UPTIME_SEC / 60))
     echo "System uptime: ${UPTIME_MIN} minutes"
     
-    # WiFi status
-    if rfkill list wifi | grep -q "Soft blocked: yes" 2>/dev/null; then
-        error "WiFi: DISABLED (LED OFF)"
-    else
+    # WiFi status - check if wlan0 is up
+    if ip link show wlan0 2>/dev/null | grep -q "state UP"; then
         info "WiFi: ENABLED (LED ON)"
         if [[ $UPTIME_SEC -lt $WIFI_DISABLE_AFTER ]]; then
             warn "  Note: Will auto-disable on next archive run (after 5 min uptime)"
         else
             warn "  Note: Should disable on next archive run"
         fi
+    else
+        error "WiFi: DISABLED (LED OFF)"
     fi
     
     # Archive space
@@ -75,14 +75,21 @@ cmd_status() {
 
 cmd_wifi_enable() {
     info "Enabling WiFi..."
-    sudo rfkill unblock wifi
+    # Unblock any rfkill blocks first
+    sudo rfkill unblock all 2>/dev/null || true
+    sudo rfkill unblock wifi 2>/dev/null || true
+    # Start services and bring interface up
+    sudo systemctl start wpa_supplicant 2>/dev/null || true
+    sudo systemctl start dhcpcd 2>/dev/null || true
+    sudo ip link set wlan0 up 2>/dev/null || true
     
     # Set LED on
-    if [[ -d /sys/class/leds/PWR ]]; then
-        echo default-on | sudo tee /sys/class/leds/PWR/trigger >/dev/null
-    elif [[ -d /sys/class/leds/led1 ]]; then
-        echo default-on | sudo tee /sys/class/leds/led1/trigger >/dev/null
-    fi
+    for LED in ACT led0 led1 PWR; do
+        if [[ -d /sys/class/leds/$LED ]]; then
+            echo default-on | sudo tee /sys/class/leds/$LED/trigger >/dev/null
+            break
+        fi
+    done
     
     info "WiFi enabled (LED ON)"
     warn "Note: Will auto-disable after $((WIFI_DISABLE_AFTER / 60)) min uptime"
@@ -90,23 +97,27 @@ cmd_wifi_enable() {
 
 cmd_wifi_disable() {
     info "Disabling WiFi..."
-    sudo rfkill block wifi
+    # Stop services and bring interface down (don't use rfkill!)
+    sudo systemctl stop wpa_supplicant 2>/dev/null || true
+    sudo systemctl stop dhcpcd 2>/dev/null || true
+    sudo ip link set wlan0 down 2>/dev/null || true
     
     # Turn LED off
-    if [[ -d /sys/class/leds/PWR ]]; then
-        echo none | sudo tee /sys/class/leds/PWR/trigger >/dev/null
-        echo 0 | sudo tee /sys/class/leds/PWR/brightness >/dev/null
-    elif [[ -d /sys/class/leds/led1 ]]; then
-        echo none | sudo tee /sys/class/leds/led1/trigger >/dev/null
-        echo 0 | sudo tee /sys/class/leds/led1/brightness >/dev/null
-    fi
+    for LED in ACT led0 led1 PWR; do
+        if [[ -d /sys/class/leds/$LED ]]; then
+            echo none | sudo tee /sys/class/leds/$LED/trigger >/dev/null
+            echo 0 | sudo tee /sys/class/leds/$LED/brightness >/dev/null
+            break
+        fi
+    done
     
     info "WiFi disabled (LED OFF)"
 }
 
 cmd_wifi_keep() {
     info "Keeping WiFi enabled permanently..."
-    sudo rfkill unblock wifi
+    # Enable wifi first
+    cmd_wifi_enable
     
     # Stop the timer so wifi doesn't get auto-disabled
     sudo systemctl stop teslacam-archive.timer

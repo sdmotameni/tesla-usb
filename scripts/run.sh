@@ -57,10 +57,11 @@ set_led_wifi_off() {
 # Wifi control
 disable_wifi() {
     log "Disabling wifi (5 min uptime reached)"
-    rfkill block wifi 2>/dev/null || true
-    if command -v nmcli &>/dev/null; then
-        nmcli radio wifi off 2>/dev/null || true
-    fi
+    # Don't use rfkill - it persists across reboots!
+    # Instead, just stop the wifi services
+    systemctl stop wpa_supplicant 2>/dev/null || true
+    systemctl stop dhcpcd 2>/dev/null || true
+    ip link set wlan0 down 2>/dev/null || true
     set_led_wifi_off
 }
 
@@ -78,7 +79,8 @@ check_wifi_timer() {
     fi
     
     # System has been up for threshold+ time, disable wifi if not already disabled
-    if rfkill list wifi | grep -q "Soft blocked: no" 2>/dev/null; then
+    # Check if wlan0 interface is up
+    if ip link show wlan0 2>/dev/null | grep -q "state UP"; then
         disable_wifi
     else
         # Already disabled, ensure LED reflects this
