@@ -34,9 +34,10 @@ cmd_status() {
         error "WiFi: DISABLED (LED OFF)"
     else
         info "WiFi: ENABLED (LED ON)"
-        REMAINING=$((WIFI_DISABLE_AFTER - UPTIME_SEC))
-        if [[ $REMAINING -gt 0 ]]; then
-            info "  Auto-disable in: $((REMAINING / 60)) min $((REMAINING % 60)) sec"
+        if [[ $UPTIME_SEC -lt $WIFI_DISABLE_AFTER ]]; then
+            warn "  Note: Will auto-disable on next archive run (after 5 min uptime)"
+        else
+            warn "  Note: Should disable on next archive run"
         fi
     fi
     
