@@ -1,213 +1,200 @@
 #!/usr/bin/env bash
-#
-# Tesla USB Dashcam Archiver - Partition Setup Script
-# Helps set up partitions for the Tesla USB Dashcam Archiver
-#
+###############################################################################
+# Tesla USB - Partition Setup
+# Creates LVM partition for Tesla USB volume
+###############################################################################
 
 set -euo pipefail
-IFS=$'\n\t'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
+info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-# Log helper functions
-log_info() {
-  echo -e "${GREEN}[INFO]${NC} $1"
-}
+[[ $EUID -eq 0 ]] || error "Run as root: sudo $0"
 
-log_warn() {
-  echo -e "${YELLOW}[WARN]${NC} $1"
-}
+# Check tools
+command -v parted &>/dev/null || { info "Installing parted..."; apt-get update -qq && apt-get install -y parted; }
+command -v lvm &>/dev/null || { info "Installing lvm2..."; apt-get update -qq && apt-get install -y lvm2; }
 
-log_error() {
-  echo -e "${RED}[ERROR]${NC} $1"
-}
+echo "=============================================="
+echo "  Tesla USB - Partition Setup"
+echo "=============================================="
+echo
 
-# Check if script is run as root
-if [[ $EUID -ne 0 ]]; then
-  log_error "This script must be run as root (sudo)"
-  exit 1
+# Detect the boot device (usually mmcblk0 for SD cards)
+DEVICE=$(lsblk -ndo NAME,TYPE | grep disk | head -1 | awk '{print $1}')
+if [[ -z "$DEVICE" ]]; then
+    error "Could not detect boot device"
 fi
 
-# Show welcome message
-clear
-echo "=========================================================="
-echo "   Tesla USB Dashcam Archiver - Partition Setup Script"
-echo "=========================================================="
-echo ""
-log_warn "⚠️  WARNING: This script will modify partitions on your SD card."
-log_warn "⚠️  Make sure you have backed up any important data."
-log_warn "⚠️  This script is potentially DANGEROUS and could result in DATA LOSS."
-echo ""
-read -p "Are you sure you want to continue? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  log_info "Operation cancelled."
-  exit 0
-fi
+info "Detected device: /dev/$DEVICE"
+echo
 
-# Check for required tools
-log_info "Checking for required tools..."
-for tool in parted lvm2 mkfs.vfat; do
-  if ! command -v $tool &> /dev/null; then
-    log_error "Required tool '$tool' is not installed. Please install it first."
-    if [[ "$tool" == "lvm2" ]]; then
-      log_info "You can install it with: sudo apt install lvm2"
-    elif [[ "$tool" == "parted" ]]; then
-      log_info "You can install it with: sudo apt install parted"
-    fi
-    exit 1
-  fi
-done
-log_info "All required tools are installed."
+# Show current partition layout
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINT /dev/$DEVICE
+echo
 
-# List available devices
-echo ""
-log_info "Available devices:"
-lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
-echo ""
-
-# Get device to partition
-read -p "Enter the device to partition (e.g., mmcblk0): " DEVICE
-if [[ ! -b "/dev/$DEVICE" ]]; then
-  log_error "Device /dev/$DEVICE does not exist or is not a block device."
-  exit 1
-fi
-
-# Confirm device selection
-log_warn "⚠️  You have selected /dev/$DEVICE"
-log_warn "⚠️  ALL DATA ON THIS DEVICE WILL BE LOST!"
-read -p "Are you absolutely sure? (Type 'YES' to confirm): " CONFIRM
-if [[ "$CONFIRM" != "YES" ]]; then
-  log_info "Operation cancelled."
-  exit 0
-fi
-
-# Get total size of the device
-TOTAL_SIZE=$(blockdev --getsize64 /dev/$DEVICE)
-TOTAL_SIZE_GB=$(echo "scale=2; $TOTAL_SIZE / 1024 / 1024 / 1024" | bc)
-log_info "Device size: $TOTAL_SIZE_GB GB"
-
-# Get partition sizes
-echo ""
-log_info "Please specify partition sizes:"
-echo "1. Root partition - Raspberry Pi OS"
-echo "2. Tesla USB partition - Used by Tesla for recording"
-echo "3. LVM partition - Used for archive storage (remaining space)"
-echo ""
-
-read -p "Root partition size in GB [32]: " ROOT_SIZE
-ROOT_SIZE=${ROOT_SIZE:-32}
-
-read -p "Tesla USB partition size in GB [128]: " TESLA_SIZE
-TESLA_SIZE=${TESLA_SIZE:-128}
-
-# Calculate remaining space for LVM
-LVM_SIZE=$(echo "scale=2; $TOTAL_SIZE_GB - $ROOT_SIZE - $TESLA_SIZE" | bc)
-if (( $(echo "$LVM_SIZE <= 0" | bc -l) )); then
-  log_error "Not enough space left for LVM partition."
-  exit 1
-fi
-
-log_info "Partition allocation:"
-echo "1. Root partition: $ROOT_SIZE GB"
-echo "2. Tesla USB partition: $TESLA_SIZE GB"
-echo "3. LVM partition: $LVM_SIZE GB (remaining space)"
-echo ""
-
-read -p "Proceed with partitioning? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  log_info "Operation cancelled."
-  exit 0
-fi
-
-# Unmount any mounted partitions
-log_info "Unmounting any mounted partitions..."
-for part in $(mount | grep "/dev/$DEVICE" | awk '{print $1}'); do
-  log_info "Unmounting $part"
-  umount -f "$part" || true
-done
-
-# Create partition table
-log_info "Creating new partition table..."
-parted -s /dev/$DEVICE mklabel msdos
-
-# Calculate partition sizes in MB
-ROOT_SIZE_MB=$((ROOT_SIZE * 1024))
-TESLA_SIZE_MB=$((TESLA_SIZE * 1024))
-
-# Create partitions
-log_info "Creating partitions..."
-parted -s /dev/$DEVICE mkpart primary fat32 1MiB "${ROOT_SIZE_MB}MiB"
-parted -s /dev/$DEVICE mkpart primary fat32 "${ROOT_SIZE_MB}MiB" "$((ROOT_SIZE_MB + TESLA_SIZE_MB))MiB"
-parted -s /dev/$DEVICE mkpart primary "$((ROOT_SIZE_MB + TESLA_SIZE_MB))MiB" 100%
-
-# Set boot flag on first partition
-parted -s /dev/$DEVICE set 1 boot on
-
-log_info "Partitions created successfully."
-
-# Format Tesla USB partition as FAT32
-log_info "Formatting Tesla USB partition (FAT32)..."
+# Determine partition naming (mmcblk0p1 vs sda1)
 if [[ "$DEVICE" == mmcblk* ]]; then
-  TESLA_PART="/dev/${DEVICE}p2"
+    PART_PREFIX="${DEVICE}p"
 else
-  TESLA_PART="/dev/${DEVICE}2"
+    PART_PREFIX="${DEVICE}"
 fi
 
-mkfs.vfat -F 32 -n "TESLA_CAM" "$TESLA_PART"
+# Check if partition 3 already exists
+if [[ -b "/dev/${PART_PREFIX}3" ]]; then
+    info "Partition 3 already exists, will use it for LVM"
+    PART="/dev/${PART_PREFIX}3"
+else
+    # Check available free space
+    FREE_SPACE=$(parted /dev/$DEVICE unit GB print free 2>/dev/null | grep 'Free Space' | tail -1 | awk '{print $3}' | sed 's/GB//')
+    
+    if [[ -z "$FREE_SPACE" ]] || (( $(echo "$FREE_SPACE < 10" | bc -l) )); then
+        error "No free space available to create partition 3
+
+This happens because Raspberry Pi OS auto-expands to fill the entire SD card.
+
+SOLUTION: Run this BEFORE first boot of Raspberry Pi OS:
+==========================================
+From another Linux computer:
+
+1. Flash Raspberry Pi OS to SD card
+2. BEFORE booting the Pi, run this on your computer:
+
+   # Shrink partition 2 to 32GB
+   sudo parted /dev/sdX resizepart 2 32GB
+   
+   # Create partition 3 with remaining space  
+   sudo parted /dev/sdX mkpart primary 32GB 100%
+   
+   # Resize the filesystem to match
+   sudo e2fsck -f /dev/sdX2
+   sudo resize2fs /dev/sdX2
+
+3. THEN boot the Pi and run this script again
+=========================================="
+    fi
+    
+    info "Found ${FREE_SPACE}GB of free space"
+    
+    # Get desired size
+    read -p "Size for Tesla USB volume in GB [128]: " TESLA_GB
+    TESLA_GB=${TESLA_GB:-128}
+    
+    # Confirm
+    warn "This will create partition 3 on /dev/$DEVICE"
+    read -p "Type 'YES' to confirm: " CONFIRM
+    [[ "$CONFIRM" == "YES" ]] || exit 0
+    
+    # Unmount if mounted
+    umount /dev/${PART_PREFIX}3 2>/dev/null || true
+    
+    # Create partition 3
+    info "Creating partition 3..."
+    END_SECTOR=$(parted /dev/$DEVICE unit s print free | grep 'Free Space' | tail -1 | awk '{print $1}' | sed 's/s//')
+    parted -s /dev/$DEVICE mkpart primary ${END_SECTOR}s 100%
+    
+    # Wait for device to appear
+    sleep 2
+    partprobe /dev/$DEVICE
+    sleep 1
+    
+    PART="/dev/${PART_PREFIX}3"
+    
+    if [[ ! -b "$PART" ]]; then
+        error "Failed to create partition 3"
+    fi
+    
+    info "Created partition 3: $PART"
+fi
+
+# Calculate available space in partition 3
+PART_SIZE_BYTES=$(blockdev --getsize64 "$PART" 2>/dev/null || echo "0")
+PART_SIZE_GB=$(echo "scale=0; $PART_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+
+if [[ "$PART_SIZE_GB" -lt 10 ]]; then
+    error "Partition 3 is too small: ${PART_SIZE_GB}GB"
+fi
+
+info "Partition 3 has ${PART_SIZE_GB}GB available"
+
+# Get size for logical volume
+read -p "Size for Tesla USB volume in GB [${PART_SIZE_GB}]: " TESLA_GB
+TESLA_GB=${TESLA_GB:-$PART_SIZE_GB}
+
+# Validate size
+if [[ $TESLA_GB -gt $PART_SIZE_GB ]]; then
+    error "Requested size (${TESLA_GB}GB) exceeds partition size (${PART_SIZE_GB}GB)"
+fi
 
 # Set up LVM
-log_info "Setting up LVM..."
-if [[ "$DEVICE" == mmcblk* ]]; then
-  LVM_PART="/dev/${DEVICE}p3"
-else
-  LVM_PART="/dev/${DEVICE}3"
+info "Setting up LVM on $PART..."
+
+# Remove existing LVM if present
+vgremove -f tesla_vg 2>/dev/null || true
+pvremove -f "$PART" 2>/dev/null || true
+
+# Create LVM structure
+pvcreate -f "$PART" || error "Failed to create physical volume"
+vgcreate tesla_vg "$PART" || error "Failed to create volume group"
+
+# Calculate sizes - split between Tesla USB and Archive
+# Tesla USB gets requested size, Archive gets the rest (minus safety margin)
+LV_TESLA_SIZE=$(echo "scale=0; $TESLA_GB * 0.95 / 1" | bc)
+LV_ARCHIVE_SIZE=$(echo "scale=0; ($PART_SIZE_GB - $TESLA_GB - 10) / 1" | bc)
+
+if [[ $LV_ARCHIVE_SIZE -lt 50 ]]; then
+    error "Not enough space for archive volume (need at least 50GB)"
 fi
 
-# Make sure the partition is unmounted before creating physical volume
-if mount | grep -q "$LVM_PART"; then
-  log_info "Unmounting $LVM_PART before creating physical volume"
-  umount -f "$LVM_PART" || true
-fi
+info "Creating Tesla USB volume: ${LV_TESLA_SIZE}GB"
+lvcreate -L "${LV_TESLA_SIZE}G" -n tesla_usb tesla_vg || error "Failed to create tesla_usb volume"
 
-# Create physical volume
-log_info "Creating LVM physical volume on $LVM_PART"
-pvcreate "$LVM_PART"
+info "Creating Archive volume: ${LV_ARCHIVE_SIZE}GB"
+lvcreate -L "${LV_ARCHIVE_SIZE}G" -n tesla_archive tesla_vg || error "Failed to create tesla_archive volume"
 
-# Create volume group
-vgcreate tesla_vg "$LVM_PART"
+# Format Tesla USB as FAT32
+info "Formatting Tesla USB volume as FAT32..."
+mkfs.vfat -F 32 -n "TESLA" /dev/tesla_vg/tesla_usb || error "Format failed"
 
-# Calculate logical volume size (about 5% smaller than partition size for LVM overhead)
-# This provides space for LVM metadata, snapshots, and prevents performance issues
-LV_SIZE=$(echo "scale=0; ${TESLA_SIZE} * 0.95 / 1" | bc)
-log_info "Creating logical volume with size ${LV_SIZE}G (5% smaller than partition for LVM overhead)"
-log_info "This space is needed for LVM metadata, snapshots, and to prevent performance degradation"
+# Format Archive as ext4 (more efficient for Linux)
+info "Formatting Archive volume as ext4..."
+mkfs.ext4 -L "ARCHIVE" /dev/tesla_vg/tesla_archive || error "Format failed"
 
-# Create logical volumes
-lvcreate -L "${LV_SIZE}G" -n tesla_usb tesla_vg
-
-# Format Tesla USB logical volume
-log_info "Formatting Tesla USB logical volume (FAT32)..."
-mkfs.vfat -F 32 -n "TESLA_CAM_LV" /dev/tesla_vg/tesla_usb
-
-# Create TeslaCam directory
-log_info "Creating TeslaCam directory..."
+# Create TeslaCam directory on Tesla USB
+info "Creating TeslaCam directory..."
 mkdir -p /mnt/tesla_init
 mount /dev/tesla_vg/tesla_usb /mnt/tesla_init
 mkdir -p /mnt/tesla_init/TeslaCam
 umount /mnt/tesla_init
 
-log_info "Partition setup completed successfully!"
-echo ""
-log_info "Next steps:"
-echo "1. Run the installation script: sudo ./scripts/install.sh"
-echo "2. Configure USB Mass Storage Gadget (if using a Pi Zero)"
-echo "3. Reboot your Raspberry Pi"
-echo ""
-log_warn "Note: You will need to reinstall Raspberry Pi OS on the root partition."
-echo "==========================================================" 
+# Mount archive volume
+info "Mounting archive volume..."
+mkdir -p /mnt/tesla_archive
+mount /dev/tesla_vg/tesla_archive /mnt/tesla_archive
+mkdir -p /mnt/tesla_archive/TeslaCam
+
+# Set ownership to the user who ran sudo (if available)
+if [[ -n "$SUDO_USER" ]]; then
+    chown -R "$SUDO_USER:$SUDO_USER" /mnt/tesla_archive
+else
+    # Fallback: make it world-writable
+    chmod 777 /mnt/tesla_archive
+fi
+
+umount /mnt/tesla_archive
+
+echo
+echo "=============================================="
+info "Success! Created volumes:"
+echo "  Tesla USB:  /dev/tesla_vg/tesla_usb (${LV_TESLA_SIZE}GB FAT32)"
+echo "  Archive:    /dev/tesla_vg/tesla_archive (${LV_ARCHIVE_SIZE}GB ext4)"
+echo
+info "Volumes are ready"
+echo
+echo "Next steps:"
+echo "  1. Run: sudo ./scripts/setup.sh"
+echo "  2. Configure USB gadget mode (see README)"
+echo "  3. Reboot and plug into Tesla"
+echo "=============================================="
