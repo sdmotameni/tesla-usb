@@ -1,0 +1,9 @@
+[Unit]
+Description=WiFi Manager - Timed WiFi Control
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wifi-manager.sh
+StandardOutput=null
+StandardError=journal

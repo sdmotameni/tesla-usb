@@ -74,14 +74,22 @@ cmd_status() {
 }
 
 cmd_wifi_enable() {
-    info "Enabling WiFi..."
-    # Unblock any rfkill blocks first
+    info "Enabling WiFi manually..."
+    # Unblock any rfkill blocks
     sudo rfkill unblock all 2>/dev/null || true
     sudo rfkill unblock wifi 2>/dev/null || true
-    # Start services and bring interface up
-    sudo systemctl start wpa_supplicant 2>/dev/null || true
-    sudo systemctl start dhcpcd 2>/dev/null || true
+    # Bring interface up
     sudo ip link set wlan0 up 2>/dev/null || true
+    # Start services if not running
+    if ! systemctl is-active --quiet wpa_supplicant; then
+        sudo systemctl start wpa_supplicant 2>/dev/null || true
+    fi
+    if ! systemctl is-active --quiet dhcpcd; then
+        sudo systemctl start dhcpcd 2>/dev/null || true
+    fi
+    
+    # Update state file to prevent wifi-manager from disabling
+    echo "on" | sudo tee /run/wifi-manager-state >/dev/null
     
     # Set LED on
     for LED in ACT led0 led1 PWR; do
@@ -92,15 +100,16 @@ cmd_wifi_enable() {
     done
     
     info "WiFi enabled (LED ON)"
-    warn "Note: Will auto-disable after $((WIFI_DISABLE_AFTER / 60)) min uptime"
+    warn "Note: Will auto-disable after $((WIFI_DISABLE_AFTER / 60)) min uptime unless 'wifi-keep' is used"
 }
 
 cmd_wifi_disable() {
-    info "Disabling WiFi..."
-    # Stop services and bring interface down (don't use rfkill!)
-    sudo systemctl stop wpa_supplicant 2>/dev/null || true
-    sudo systemctl stop dhcpcd 2>/dev/null || true
+    info "Disabling WiFi manually..."
+    # Bring interface down
     sudo ip link set wlan0 down 2>/dev/null || true
+    
+    # Update state file
+    echo "off" | sudo tee /run/wifi-manager-state >/dev/null
     
     # Turn LED off
     for LED in ACT led0 led1 PWR; do
@@ -115,21 +124,25 @@ cmd_wifi_disable() {
 }
 
 cmd_wifi_keep() {
-    info "Keeping WiFi enabled permanently..."
+    info "Keeping WiFi enabled permanently for this boot..."
     # Enable wifi first
     cmd_wifi_enable
     
-    # Stop the timer so wifi doesn't get auto-disabled
-    sudo systemctl stop teslacam-archive.timer
-    info "Stopped auto-archive timer"
+    # Create a flag file that wifi-manager checks
+    echo "permanent" | sudo tee /run/wifi-permanent >/dev/null
     
-    warn "To resume auto-archiving: tesla-ctl resume"
+    # Optionally stop wifi-manager timer
+    sudo systemctl stop wifi-manager.timer
+    
+    info "WiFi will remain enabled until next reboot"
 }
 
 cmd_resume() {
     info "Resuming normal operation..."
     sudo systemctl start teslacam-archive.timer
-    info "Auto-archive timer restarted"
+    sudo systemctl start wifi-manager.timer
+    sudo rm -f /run/wifi-permanent
+    info "Auto-archive and WiFi management restarted"
     warn "WiFi will auto-disable after $((WIFI_DISABLE_AFTER / 60)) min uptime"
 }
 

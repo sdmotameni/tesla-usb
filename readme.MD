@@ -12,7 +12,7 @@ Transform a Raspberry Pi Zero 2 W into an offline Tesla dashcam archiving system
 - **Safe Concurrent Access**: LVM snapshots allow reading while Tesla writes
 - **Automatic Archiving**: Runs every 15 minutes via systemd timer
 - **Smart Storage Management**: Auto-deletes oldest files when space is low
-- **WiFi Auto-Disable**: Saves power after 5 minutes, re-enables on power cycle
+- **WiFi Auto-Disable**: Saves power after 5 minutes (configurable), re-enables on power cycle
 - **LED Indicators**: Visual wifi status (ON=enabled, OFF=disabled)
 - **Simple Control API**: Manage system with `tesla-ctl` command
 - **Crash Recovery**: Automatic cleanup of interrupted runs

@@ -22,71 +22,11 @@ CONFIG_FILE="${CONFIG_FILE:-/etc/tesla-usb/tesla-usb.conf}"
 : "${LOG_FILE:=$ARCHIVE_DIR/archive.log}"
 : "${MIN_DISK_SPACE_PCT:=10}"
 : "${MAX_DISK_TEMP:=100}"
-: "${WIFI_DISABLE_AFTER:=300}"  # Disable wifi after 5 minutes (300 seconds) from boot
-
 ###############################################################################
 # HELPERS
 ###############################################################################
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 die() { log "ERROR: $*"; exit 1; }
-
-# LED control for wifi status indication
-set_led_wifi_on() {
-    # Set LED to solid on (wifi enabled)
-    # Try all common LED names
-    for LED in ACT led0 led1 PWR; do
-        if [[ -d /sys/class/leds/$LED ]]; then
-            echo default-on > /sys/class/leds/$LED/trigger 2>/dev/null || true
-            break
-        fi
-    done
-}
-
-set_led_wifi_off() {
-    # Turn off LED completely (wifi disabled)
-    # Try all common LED names
-    for LED in ACT led0 led1 PWR; do
-        if [[ -d /sys/class/leds/$LED ]]; then
-            echo none > /sys/class/leds/$LED/trigger 2>/dev/null || true
-            echo 0 > /sys/class/leds/$LED/brightness 2>/dev/null || true
-            break
-        fi
-    done
-}
-
-# Wifi control
-disable_wifi() {
-    log "Disabling wifi (5 min uptime reached)"
-    # Don't use rfkill - it persists across reboots!
-    # Instead, just stop the wifi services
-    systemctl stop wpa_supplicant 2>/dev/null || true
-    systemctl stop dhcpcd 2>/dev/null || true
-    ip link set wlan0 down 2>/dev/null || true
-    set_led_wifi_off
-}
-
-check_wifi_timer() {
-    # Note: This only runs when archiver runs (every 15 min)
-    # So wifi disables at ~17 min (2 min first run + 15 min interval)
-    
-    # Get system uptime in seconds
-    UPTIME=$(awk '{print int($1)}' /proc/uptime)
-    
-    # If system has been up for less than threshold, ensure wifi is on
-    if [[ $UPTIME -lt $WIFI_DISABLE_AFTER ]]; then
-        set_led_wifi_on
-        return 0
-    fi
-    
-    # System has been up for threshold+ time, disable wifi if not already disabled
-    # Check if wlan0 interface is up
-    if ip link show wlan0 2>/dev/null | grep -q "state UP"; then
-        disable_wifi
-    else
-        # Already disabled, ensure LED reflects this
-        set_led_wifi_off
-    fi
-}
 
 ###############################################################################
 # SETUP
@@ -116,9 +56,6 @@ trap cleanup EXIT INT TERM
 # PRE-FLIGHT CHECKS
 ###############################################################################
 log "Starting archive run"
-
-# Check wifi timer and disable if needed
-check_wifi_timer
 
 # Clean stale snapshot if exists
 if lvs "$VG_NAME/$SNAP_NAME" &>/dev/null; then

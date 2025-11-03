@@ -46,6 +46,10 @@ info "Installing control script..."
 cp "$(dirname "$0")/tesla-ctl.sh" /usr/local/bin/tesla-ctl
 chmod +x /usr/local/bin/tesla-ctl
 
+info "Installing wifi manager..."
+cp "$(dirname "$0")/wifi-manager.sh" /usr/local/bin/wifi-manager.sh
+chmod +x /usr/local/bin/wifi-manager.sh
+
 # Install config
 info "Installing configuration..."
 cat > /etc/tesla-usb/tesla-usb.conf <<'EOF'
@@ -93,6 +97,10 @@ info "Installing systemd services..."
 # WiFi unblock on boot service
 cp "$(dirname "$0")/../etc/systemd/system/wifi-unblock.service" /etc/systemd/system/
 
+# WiFi manager service and timer
+cp "$(dirname "$0")/../etc/systemd/system/wifi-manager.service" /etc/systemd/system/
+cp "$(dirname "$0")/../etc/systemd/system/wifi-manager.timer" /etc/systemd/system/
+
 # Archive service
 cat > /etc/systemd/system/teslacam-archive.service <<'EOF'
 [Unit]
@@ -133,7 +141,10 @@ fi
 info "Enabling systemd services..."
 systemctl daemon-reload
 systemctl enable wifi-unblock.service
-systemctl enable --now teslacam-archive.timer
+systemctl enable wifi-manager.timer
+systemctl enable teslacam-archive.timer
+# Don't start immediately to avoid kicking user out
+info "Timers enabled. Will start on next reboot."
 
 echo
 echo "=============================================="

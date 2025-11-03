@@ -1,0 +1,11 @@
+[Unit]
+Description=WiFi Manager Timer - Check every minute
+After=multi-user.target
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=1min
+Unit=wifi-manager.service
+
+[Install]
+WantedBy=timers.target

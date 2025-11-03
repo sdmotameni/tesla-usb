@@ -1,12 +1,21 @@
 [Unit]
-Description=Force WiFi enabled on boot and unblock any rfkill
-After=multi-user.target
+Description=Ensure WiFi starts enabled on boot
+Before=network-pre.target
+Wants=network-pre.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'sleep 5; rfkill unblock all; rfkill unblock wifi; rfkill unblock 0; rfkill unblock 1; systemctl restart wpa_supplicant; systemctl restart dhcpcd; ip link set wlan0 up'
+# Clear any rfkill blocks that may have persisted
+ExecStartPre=/bin/rm -f /var/lib/systemd/rfkill/*
+# Unblock all rfkill
+ExecStart=/usr/sbin/rfkill unblock all
+ExecStart=/usr/sbin/rfkill unblock wifi
+ExecStart=/usr/sbin/rfkill unblock 0
+ExecStart=/usr/sbin/rfkill unblock 1
+# Ensure interface is up
+ExecStartPost=/sbin/ip link set wlan0 up
 RemainAfterExit=yes
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target
 
